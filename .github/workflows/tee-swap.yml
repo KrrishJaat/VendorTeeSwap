@@ -1,0 +1,101 @@
+name: TEE Changer
+run-name: TEE Changer > ${{ inputs.stock_model }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      port_rom_gdrive:
+        description: 'Google Drive file ID or share URL of the Port ROM ZIP (must be accessible to anyone with the link)'
+        required: true
+        type: string
+      stock_model:
+        description: 'Samsung stock model (e.g. SM-M356B) to pull the latest vendor/tee from'
+        required: true
+        type: string
+      stock_csc:
+        description: 'Samsung stock CSC (e.g. INS)'
+        required: true
+        type: string
+      stock_imei:
+        description: 'IMEI or serial for the stock firmware download (any syntactically valid value; not tied to a real device)'
+        required: true
+        type: string
+
+jobs:
+  tee-swap:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Install Google Drive downloader
+        run: |
+          python3 -m pip install --disable-pip-version-check --no-cache-dir 'gdown==6.1.0'
+          gdown --version
+
+      - name: Free disk space (1/4) - System Junk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a
+
+      - name: Free disk space (2/4) - Tool Cache
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Free disk space (3/4)
+        uses: rokibhasansagar/slimhub_actions@main
+        with:
+          retain: 'compiler_cmake'
+
+      - name: Free disk space (4/4)
+        run: |
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/lib/node_modules
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/share/sbt
+          sudo apt-get clean
+
+      - name: Disk Space Check
+        run: df -h /
+
+      - name: Run TEE Changer
+        id: tee_swap
+        env:
+          PORT_ROM_GDRIVE: ${{ inputs.port_rom_gdrive }}
+          STOCK_MODEL: ${{ inputs.stock_model }}
+          STOCK_CSC: ${{ inputs.stock_csc }}
+          STOCK_IMEI: ${{ inputs.stock_imei }}
+        run: |
+          chmod +x scripts/tee_swap/*.sh
+          sudo -E bash scripts/tee_swap/orchestrate.sh
+
+      - name: Upload ZIP to GoFile
+        id: gofile
+        env:
+          GOFILE_TOKEN: ${{ secrets.GOFILE_TOKEN }}
+          GOFILE_FOLDER_ID: ${{ secrets.GOFILE_FOLDER_ID }}
+        run: |
+          ROM_FILE='${{ steps.tee_swap.outputs.final_zip_path }}'
+          if [ -z "$ROM_FILE" ] || [ ! -f "$ROM_FILE" ]; then
+            echo "No output ZIP found!"
+            exit 1
+          fi
+          bash scripts/tee_swap/upload_gofile.sh "$ROM_FILE"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### TEE Changer" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Output ZIP: \`${{ steps.tee_swap.outputs.final_zip_path }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${{ steps.gofile.outputs.download_url }}" ]; then
+            echo "- GoFile link: ${{ steps.gofile.outputs.download_url }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
