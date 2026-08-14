@@ -71,15 +71,29 @@ REBUILD_PORT_SUPER_IMAGE()
 REINSERT_VENDOR_IMAGE()
 {
     local NEW_VENDOR_IMG="$1"
+    local FINAL_STAGE="$TEE_SWAP_TMP/final_port_rom.zip"
 
     case "$PORT_VENDOR_SOURCE" in
         standalone)
+            # The original archive is kept pristine in the temporary workspace.
+            # Replace only the standalone vendor.img entry in that archive.
+            cp -f "$PORT_ORIGINAL_ZIP" "$FINAL_STAGE" \
+                || { ERROR_EXIT "Failed to stage original Port ROM ZIP"; return 1; }
+
+            rm -f -- "$PORT_EXTRACT_DIR/$PORT_VENDOR_ZIP_PATH"
+            mkdir -p "$(dirname "$PORT_EXTRACT_DIR/$PORT_VENDOR_ZIP_PATH")"
             cp -f "$NEW_VENDOR_IMG" "$PORT_EXTRACT_DIR/$PORT_VENDOR_ZIP_PATH" \
                 || { ERROR_EXIT "Failed to stage updated standalone vendor image"; return 1; }
             ;;
         super)
             local NEW_SUPER
             NEW_SUPER="$(REBUILD_PORT_SUPER_IMAGE "$NEW_VENDOR_IMG")" || return 1
+
+            cp -f "$PORT_ORIGINAL_ZIP" "$FINAL_STAGE" \
+                || { ERROR_EXIT "Failed to stage original Port ROM ZIP"; return 1; }
+
+            rm -f -- "$PORT_EXTRACT_DIR/$PORT_VENDOR_ZIP_PATH"
+            mkdir -p "$(dirname "$PORT_EXTRACT_DIR/$PORT_VENDOR_ZIP_PATH")"
             cp -f "$NEW_SUPER" "$PORT_EXTRACT_DIR/$PORT_VENDOR_ZIP_PATH" \
                 || { ERROR_EXIT "Failed to stage rebuilt super.img"; return 1; }
             ;;
@@ -89,23 +103,24 @@ REINSERT_VENDOR_IMAGE()
             ;;
     esac
 
-    # The original Port ROM ZIP was deliberately deleted immediately after
-    # extraction. Recreate it from the extracted tree using the EXACT same
-    # basename and the original ZIP's internal paths.
-    [[ ! -e "$PORT_ZIP" ]] || {
-        ERROR_EXIT "Refusing to overwrite a Port ROM ZIP that was not deleted after extraction"
-        return 1
-    }
+    # IMPORTANT: never rebuild the whole ZIP. Start from the pristine original
+    # archive, delete only the image entry we changed, then add that one entry
+    # back. All other ZIP entries remain byte-for-byte untouched.
+    (
+        cd "$PORT_EXTRACT_DIR" || exit 1
+        zip -q -d "$FINAL_STAGE" "$PORT_VENDOR_ZIP_PATH" >/dev/null
+        zip -q -g "$FINAL_STAGE" "$PORT_VENDOR_ZIP_PATH"
+    ) || { ERROR_EXIT "Failed to replace only $PORT_VENDOR_ZIP_PATH in the original ZIP"; return 1; }
 
-    RUN_CMD "Repacking Port ROM ZIP ($PORT_ROM_NAME)" \
-        "cd '$PORT_EXTRACT_DIR' && zip -q -r '$PORT_ZIP' ."
+    [[ -f "$FINAL_STAGE" ]] || { ERROR_EXIT "Final Port ROM ZIP was not created"; return 1; }
+    unzip -tq "$FINAL_STAGE" >/dev/null 2>&1 \
+        || { ERROR_EXIT "Final Port ROM ZIP failed integrity check"; return 1; }
 
-    [[ -f "$PORT_ZIP" ]] || { ERROR_EXIT "Rebuilt Port ROM ZIP was not created"; return 1; }
-    unzip -tq "$PORT_ZIP" >/dev/null 2>&1 \
-        || { ERROR_EXIT "Rebuilt Port ROM ZIP failed integrity check"; return 1; }
+    unzip -l "$FINAL_STAGE" | grep -qF "$PORT_VENDOR_ZIP_PATH" \
+        || { ERROR_EXIT "Final ZIP is missing the updated image entry: $PORT_VENDOR_ZIP_PATH"; return 1; }
 
-    unzip -l "$PORT_ZIP" | grep -qF "$PORT_VENDOR_ZIP_PATH" \
-        || { ERROR_EXIT "Rebuilt ZIP is missing the updated image entry: $PORT_VENDOR_ZIP_PATH"; return 1; }
+    FINAL_ZIP_STAGE="$FINAL_STAGE"
+    export FINAL_ZIP_STAGE
 }
 
 # ]

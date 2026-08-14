@@ -73,6 +73,10 @@ for UTIL in "$RECOREUI"/scripts/**/*.sh; do
     # pure function library like every other file in this loop, it's the
     # entry point currently running.
     [[ "$(readlink -f "$UTIL")" == "$SELF" ]] && continue
+    # TEE-swap scripts are executable entry points/helpers, not part of the
+    # ReCoreUI library environment. Some (notably selftest.sh) execute work
+    # at source time, so never source anything from scripts/tee_swap here.
+    [[ "$UTIL" == "$RECOREUI"/scripts/tee_swap/*.sh ]] && continue
     # Defensive: some checkouts/zip exports of this repo carry CRLF line
     # endings, which makes `source` fail outright on any function
     # declaration line. Strip CR at source-time only — no files on disk
@@ -208,7 +212,11 @@ LOG_END "Port ROM ZIP updated in place"
 # ---------------------------------------------------------------------------
 FINAL_NAME="$PORT_ROM_NAME"
 FINAL_ZIP="$DIROUT/$FINAL_NAME"
-mv -f "$PORT_ZIP" "$FINAL_ZIP" || ERROR_EXIT "Failed to place final ZIP at $FINAL_ZIP"
+[[ -n "${FINAL_ZIP_STAGE:-}" && -f "$FINAL_ZIP_STAGE" ]] \
+    || ERROR_EXIT "Final ZIP stage was not created"
+mkdir -p "$DIROUT"
+mv -f "$FINAL_ZIP_STAGE" "$FINAL_ZIP" \
+    || ERROR_EXIT "Failed to place final ZIP at $FINAL_ZIP"
 LOG_INFO "Final ZIP: $FINAL_ZIP ($(du -h "$FINAL_ZIP" | cut -f1))"
 
 echo "final_zip_path=$FINAL_ZIP" >> "${GITHUB_OUTPUT:-/dev/null}" 2>/dev/null || true

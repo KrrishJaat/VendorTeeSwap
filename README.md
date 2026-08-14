@@ -10,8 +10,7 @@ It:
 - Downloads the required Samsung stock firmware.
 - Replaces the Port ROM `vendor/tee` with the stock version.
 - Rebuilds `vendor.img` or `super.img` when required.
-- Repackages the ROM using the original filename.
+- Repackages the ROM while replacing only the modified image entry.
+- Preserves all other files in the original ROM ZIP.
 - Uploads the rebuilt ROM to GoFile.
 - Provides the final GoFile download link.
-
-The workflow uses the required ReCoreUI helper scripts and Android image tools without requiring the complete ReCoreUI build system.

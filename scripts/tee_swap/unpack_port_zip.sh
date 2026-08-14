@@ -56,7 +56,14 @@ UNPACK_PORT_VENDOR()
     local TMP_DIR="$2"
 
     PORT_EXTRACT_DIR="$TMP_DIR/port_extracted"
+    PORT_ORIGINAL_ZIP="$TMP_DIR/original_port_rom.zip"
     rm -rf "$PORT_EXTRACT_DIR" && mkdir -p "$PORT_EXTRACT_DIR"
+
+    # Keep a pristine copy only in the temporary workspace. The downloaded
+    # ZIP itself is removed after extraction, but this copy lets the final
+    # archive replace only the image we changed instead of recreating every
+    # ZIP entry.
+    cp -f "$PORT_ZIP" "$PORT_ORIGINAL_ZIP" || { ERROR_EXIT "Failed to preserve original Port ROM ZIP"; return 1; }
 
     RUN_CMD "Extracting Port ROM ZIP" \
         "unzip -q -o '$PORT_ZIP' -d '$PORT_EXTRACT_DIR'"
@@ -121,7 +128,7 @@ UNPACK_PORT_VENDOR()
     # pipeline points them at $RECOREUI/workspace.
     WORKSPACE="$WORKDIR/$PORT_MODEL_TAG"
 
-    export WORKSPACE PORT_VENDOR_FS PORT_VENDOR_SOURCE PORT_VENDOR_ZIP_PATH PORT_EXTRACT_DIR
+    export WORKSPACE PORT_VENDOR_FS PORT_VENDOR_SOURCE PORT_VENDOR_ZIP_PATH PORT_EXTRACT_DIR PORT_ORIGINAL_ZIP
 
     # The original archive is intentionally removed after successful extraction.
     # Repackaging later creates a fresh ZIP with the same original filename.
