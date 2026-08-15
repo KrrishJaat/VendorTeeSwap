@@ -84,6 +84,11 @@ for UTIL in "$RECOREUI"/scripts/**/*.sh; do
     source <(tr -d '\r' < "$UTIL")
 done
 
+# TEE-swap-only helpers are intentionally excluded from the generic library
+# sourcing above. Source the Google Drive downloader explicitly so its
+# DOWNLOAD_FROM_GDRIVE function is available to the orchestrator.
+source "$RECOREUI/scripts/tee_swap/download_gdrive.sh"
+
 # USE_THREADS() lives inside build.sh itself (not under scripts/), and we
 # deliberately do not source build.sh here (it ends with an unconditional
 # call to _BUILD_ROM, which would try to run a full device build). This is
